@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
+use http::header::CONTENT_TYPE;
 use serde_json::{from_slice, Value};
 use http::Request;
 use sha2::Sha256;
@@ -52,11 +53,11 @@ impl OkxTrait for Okx {
 
         let endpoint = HashMap::from([
             ("make_order".to_string(), ["POST".to_string(), "api/v5/trade/order".to_string()]),
-            ("cancel_order".to_string(), ["DELETE".to_string(), "api/v5/trade/cancel-order".to_string()])
+            ("cancel_order".to_string(), ["POST".to_string(), "api/v5/trade/cancel-order".to_string()])
         ]);
 
         Ok(Self {
-            api_url: "https://api.okx.com/".to_string(),
+            api_url: "https://www.okx.com/".to_string(),
             api_key,
             secret,
             passphrase,
@@ -83,7 +84,7 @@ impl OkxTrait for Okx {
             .join("&");
 
         let mut mac = self.create_hmac_key()?;
-        mac.update((timestamp + &method + &endpoint + &query_string).as_bytes());
+        mac.update((timestamp + &method + &endpoint + "?" + &query_string).as_bytes());
 
         let result = mac.finalize();
         let hmac_bytes = result.into_bytes();
@@ -98,7 +99,7 @@ impl Exchange for Okx {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let mut params = HashMap::from([
+        let params = HashMap::from([
             ("instId", req["symbol"].as_str().unwrap_or_default()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("ordType", req["order_type"].as_str().unwrap_or_default()),
@@ -117,7 +118,6 @@ impl Exchange for Okx {
             base[0].to_string(), 
             base[1].to_string()
         )?;
-        params.insert("signature", &signature);
                 
         let request = Request::builder()
             .method(base[0].as_str())
@@ -126,6 +126,7 @@ impl Exchange for Okx {
             .header("OK-ACCESS-SIGN", &signature)
             .header("OK-ACCESS-TIMESTAMP", timestamp)
             .header("OK-ACCESS-PASSPHRASE", self.passphrase.clone())
+            .header(CONTENT_TYPE, "application/json")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -136,16 +137,16 @@ impl Exchange for Okx {
         Ok(json_value)
     }
 
-    async fn cancel_order(&self, symbol: String, order_id: String) -> Result<Value, String> {
+    async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let mut params = HashMap::from([
-            ("instId", symbol.as_str()),
-            ("ordId", order_id.as_str()),
+        let params = HashMap::from([
+            ("instId", req["symbol"].as_str().unwrap_or_default()),
+            ("ordId", req["order_id"].as_str().unwrap_or_default()),
         ]);
 
         let base = self
-            .get_end_point_with_key("make_order")
+            .get_end_point_with_key("cancel_order")
             .ok_or("Endpoint not found".to_string())?;
 
         let signature = self.get_signature(
@@ -154,7 +155,6 @@ impl Exchange for Okx {
             base[0].to_string(), 
             base[1].to_string()
         )?;
-        params.insert("signature", &signature);
                 
         let request = Request::builder()
             .method(base[0].as_str())
@@ -163,6 +163,7 @@ impl Exchange for Okx {
             .header("OK-ACCESS-SIGN", &signature)
             .header("OK-ACCESS-TIMESTAMP", timestamp)
             .header("OK-ACCESS-PASSPHRASE", self.passphrase.clone())
+            .header(CONTENT_TYPE, "application/json")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -171,6 +172,10 @@ impl Exchange for Okx {
         let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
 
         Ok(json_value)
+    }
+
+    fn get_name(&self) -> String {
+        "Okx".to_string()
     }
 }
 

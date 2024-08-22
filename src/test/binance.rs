@@ -17,7 +17,7 @@ fn assert_binance_creation_error(api_key: &str, secret: &str, expected_error: &s
 #[test]
 fn test_new_binance_with_valid_credentials() {
     let binance = create_test_binance();
-    assert_eq!(binance.get_api_url(), "https://api.binance.com/");
+    assert_eq!(binance.get_api_url(), "https://api1.binance.com/");
 }
 
 #[test]

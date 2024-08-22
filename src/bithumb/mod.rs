@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
+use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{from_slice, Value};
 use http::Request;
 use sha2::{Sha512, Digest};
@@ -55,7 +56,7 @@ impl BithumbTrait for Bithumb {
         ]);
 
         Ok(Self {
-            api_url: "https://api.upbit.com/".to_string(),
+            api_url: "https://api.bithumb.com/".to_string(),
             api_key,
             secret,
             endpoint,
@@ -124,8 +125,8 @@ impl Exchange for Bithumb {
         let request = Request::builder()
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
-            .header("Authorization", authorization)
-            .header("Content-Type", "apllication/json")
+            .header(AUTHORIZATION, authorization)
+            .header(CONTENT_TYPE, "application/json")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -136,9 +137,9 @@ impl Exchange for Bithumb {
         Ok(json_value)
     }
 
-    async fn cancel_order(&self, _symbol: String, order_id: String) -> Result<Value, String> {
+    async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let params = HashMap::from([
-            ("uuid", order_id.as_str()),
+            ("uuid", req["order_id"].as_str().unwrap_or_default()),
         ]);
 
         let query_hash = self.get_query_hash(&params)?;
@@ -152,8 +153,8 @@ impl Exchange for Bithumb {
         let request = Request::builder()
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
-            .header("Authorization", authorization)
-            .header("Content-Type", "apllication/json")
+            .header(AUTHORIZATION, authorization)
+            .header(CONTENT_TYPE, "application/json")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -162,6 +163,10 @@ impl Exchange for Bithumb {
         let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
 
         Ok(json_value)
+    }
+
+    fn get_name(&self) -> String {
+        "Bithumb".to_string()
     }
 }
 

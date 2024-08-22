@@ -16,7 +16,7 @@ fn assert_bithumb_creation_error(api_key: &str, secret: &str, expected_error: &s
 #[test]
 fn test_new_bithumb_with_valid_credentials() {
     let bithumb = create_test_bithumb();
-    assert_eq!(bithumb.get_api_url(), "https://api.upbit.com/");
+    assert_eq!(bithumb.get_api_url(), "https://api.bithumb.com/");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use async_trait::async_trait;
+use http::header::CONTENT_TYPE;
 use serde_json::{from_slice, Value};
 use http::Request;
 use sha2::Sha256;
@@ -51,7 +52,7 @@ impl BinanceTrait for Binance {
         ]);
 
         Ok(Self {
-            api_url: "https://api.binance.com/".to_string(),
+            api_url: "https://api1.binance.com/".to_string(),
             api_key,
             secret,
             endpoint,
@@ -112,7 +113,7 @@ impl Exchange for Binance {
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
             .header("X-MBX-APIKEY", self.api_key.clone())
-            .header("Content-Type", "apllication/json")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -123,12 +124,12 @@ impl Exchange for Binance {
         Ok(json_value)
     }
 
-    async fn cancel_order(&self, symbol: String, order_id: String) -> Result<Value, String> {
+    async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
         let mut params = HashMap::from([
-            ("symbol", symbol.as_str()),
-            ("uuid", order_id.as_str()),
+            ("symbol", req["symbol"].as_str().unwrap_or_default()),
+            ("orderId", req["order_id"].as_str().unwrap_or_default()),
             ("timestamp", timestamp),
         ]);
 
@@ -136,14 +137,14 @@ impl Exchange for Binance {
         params.insert("signature", &signature);
         
         let base = self
-            .get_end_point_with_key("make_order")
+            .get_end_point_with_key("cancel_order")
             .ok_or("Endpoint not found".to_string())?;
         
         let request = Request::builder()
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
             .header("X-MBX-APIKEY", self.api_key.clone())
-            .header("Content-Type", "apllication/json")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(params)
             .map_err(|e| e.to_string())?;
 
@@ -152,6 +153,10 @@ impl Exchange for Binance {
         let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
 
         Ok(json_value)
+    }
+
+    fn get_name(&self) -> String {
+        "Binance".to_string()
     }
 }
 
