@@ -7,25 +7,51 @@ use reqwest::{Client, Response};
 use serde_json::Value;
 use url::Url;
 
-mod binance;
-mod bithumb;
-mod okx;
-mod upbit;
+pub mod binance;
+pub mod bithumb;
+pub mod okx;
+pub mod upbit;
 
 #[async_trait]
 pub trait Exchange {
     async fn place_order(&self, req: Value) -> Result<Value, String>;
-    async fn cancel_order(&self, symbol: String, order_id: String) -> Result<Value, String>;
+    async fn cancel_order(&self, req: Value) -> Result<Value, String>;
+    fn get_name(&self) -> String;
 }
 
 async fn send(req: Request<HashMap<&str, &str>>) -> Result<http::Response<Vec<u8>> , String> {
     let client = Client::new();
     let uri = req.uri().to_string();
     let url = Url::parse(&uri).unwrap();
-    let request = client.request(req.method().clone(), url)
-        .headers(req.headers().clone())
-        .json(req.body())
-        .build().unwrap();
+
+    let headers = req.headers().clone();
+    let content_type = headers.get("Content-Type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("application/json");
+
+    let mut request_builder = client.request(req.method().clone(), url);
+
+    match content_type {
+        "application/x-www-form-urlencoded" => {
+            let mut form_data = HashMap::new();
+            for (key, value) in req.body() {
+                form_data.insert(key.to_string(), value.to_string());
+            }
+            println!("{:?}", form_data);
+            request_builder = request_builder.form(&form_data);
+        },
+        "application/json" => {
+            let json_body = serde_json::to_value(req.body()).map_err(|e| e.to_string())?;
+            println!("{:?}", json_body);
+            request_builder = request_builder.json(&json_body);
+        },
+        _ => return Err("Unsupported Content-Type".into()),
+    }
+
+    let request = request_builder.
+        headers(headers)
+        .build()
+        .map_err(|e| e.to_string())?;
     let response = client.execute(request).await.unwrap();
 
     let convert_reqwest_to_http = convert_reqwest_to_http(response).await;

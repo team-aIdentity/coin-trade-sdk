@@ -16,7 +16,7 @@ fn assert_okx_creation_error(api_key: &str, secret: &str, passphrase: &str, expe
 #[test]
 fn test_new_okx_with_valid_credentials() {
     let okx = create_test_okx();
-    assert_eq!(okx.get_api_url(), "https://api.okx.com/");
+    assert_eq!(okx.get_api_url(), "https://www.okx.com/");
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn test_get_end_point() {
     let endpoints = okx.get_end_point();
     let expected_endpoints = HashMap::from([
         ("make_order".to_string(), ["POST".to_string(), "api/v5/trade/order".to_string()]),
-        ("cancel_order".to_string(), ["DELETE".to_string(), "api/v5/trade/cancel-order".to_string()])
+        ("cancel_order".to_string(), ["POST".to_string(), "api/v5/trade/cancel-order".to_string()])
     ]);
 
     assert_eq!(endpoints, &expected_endpoints);
@@ -60,7 +60,7 @@ fn test_get_end_point_with_key_existing() {
 
     let endpoint = okx.get_end_point_with_key("cancel_order");
     assert!(endpoint.is_some());
-    assert_eq!(endpoint.unwrap(), &["DELETE".to_string(), "api/v5/trade/cancel-order".to_string()]);
+    assert_eq!(endpoint.unwrap(), &["POST".to_string(), "api/v5/trade/cancel-order".to_string()]);
 }
 
 #[test]
