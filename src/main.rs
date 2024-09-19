@@ -26,7 +26,7 @@ async fn main() {
     let okx_exchange: Box<dyn Exchange> = Box::new(Okx::new(okx_api_key, okx_secret, okx_passphrase).unwrap());
     let bithumb_exchange: Box<dyn Exchange> = Box::new(Bithumb::new(binance_api_key, binance_secret).unwrap());
 
-    let exchanges: Vec<Box<dyn Exchange>> = vec![upbit_exchange, binance_exchange, okx_exchange, bithumb_exchange];
+    let exchanges: Vec<Box<dyn Exchange>> = vec![upbit_exchange, bithumb_exchange, binance_exchange, okx_exchange];
 
     for exchange in exchanges {
         let res = exchange.place_order(json!({
@@ -42,10 +42,10 @@ async fn main() {
             "symbol": "BTCUSDT",
             "order_id": "4"
         })).await.unwrap();
-        println!("{}_cancel_order:{}\n", exchange.get_name(), res.to_string());
+        println!("{}_cancel_order:{}", exchange.get_name(), res.to_string());
 
         let res = exchange.get_order_book(json!({
-            "symbol": "BTC/USDT",
+            "symbol": "BTC/KRW",
         })).await.unwrap();
         println!("{}_get_order_book:{}\n", exchange.get_name(), res.to_string());
     }
