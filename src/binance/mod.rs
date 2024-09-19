@@ -48,7 +48,8 @@ impl BinanceTrait for Binance {
 
         let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "api/v3/order".to_string()]),
-            ("cancel_order".to_string(), ["DELETE".to_string(), "api/v3/order".to_string()])
+            ("cancel_order".to_string(), ["DELETE".to_string(), "api/v3/order".to_string()]),
+            ("order_book".to_string(), ["GET".to_string(), "api/v3/depth".to_string()])
         ]);
 
         Ok(Self {
@@ -156,11 +157,41 @@ impl Exchange for Binance {
     }
 
     async fn get_order_book(&self, req: Value) -> Result<Value, String> {
-        return Err("not implemented".to_string());
+        let symbol = parse_symbol(req["symbol"].as_str().unwrap());
+        let params = BTreeMap::from([
+            ("symbol", symbol.as_str())
+        ]);
+
+        let query_string = params.iter()
+            .map(|(key, value)| format!("{}={}", key, value))
+            .collect::<Vec<String>>()
+            .join("&");
+
+        let base = self
+            .get_end_point_with_key("order_book")
+            .ok_or("Endpoint not found".to_string())?;
+        println!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = Request::builder()
+            .method(base[0].as_str())
+            .uri(format!("{}{}?{}", self.api_url, base[1], query_string))
+            .body(BTreeMap::new())
+            .map_err(|e| e.to_string())?;
+
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+        let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
+
+        Ok(json_value)
     }
     
     fn get_name(&self) -> String {
         "Binance".to_string()
     }
 }
+
+fn parse_symbol(symbol: &str) -> String {
+    let v: Vec<&str> = symbol.split("/").collect();
+    format!("{}{}", v[0], v[1])
+}
+
 

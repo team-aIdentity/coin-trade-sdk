@@ -45,8 +45,8 @@ async fn main() {
         println!("{}_cancel_order:{}", exchange.get_name(), res.to_string());
 
         let res = exchange.get_order_book(json!({
-            "symbol": "BTC/KRW",
-        })).await.unwrap();
+            "symbol": "BTC/USDT",
+        })).await.unwrap_or(serde_json::json!("{}"));
         println!("{}_get_order_book:{}\n", exchange.get_name(), res.to_string());
     }
 }
