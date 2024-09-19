@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::upbit::{Upbit, UpbitTrait};
 
 // 헬퍼 함수: Upbit 객체 생성
@@ -38,7 +38,7 @@ fn test_new_upbit_with_empty_credentials() {
 fn test_get_end_point() {
     let upbit = create_test_upbit();
     let endpoints = upbit.get_end_point();
-    let expected_endpoints = HashMap::from([
+    let expected_endpoints = BTreeMap::from([
         ("make_order".to_string(), ["POST".to_string(), "v1/orders".to_string()]),
         ("cancel_order".to_string(), ["DELETE".to_string(), "v1/order".to_string()])
     ]);
@@ -69,7 +69,7 @@ fn test_get_end_point_with_key_non_existing() {
 #[test]
 fn test_get_query_hash() {
     let upbit = create_test_upbit();
-    let params = HashMap::from([
+    let params = BTreeMap::from([
         ("market", "BTC-USD"),
         ("side", "buy"),
         ("ord_type", "limit"),

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use async_trait::async_trait;
 use http::header::CONTENT_TYPE;
 use serde_json::{from_slice, Value};
@@ -12,17 +12,17 @@ pub struct Binance {
     api_url: String,
     api_key: String,
     secret: String,
-    endpoint: HashMap<String, [String; 2]>,
+    endpoint: BTreeMap<String, [String; 2]>,
 }
 
 #[allow(dead_code)]
 pub trait BinanceTrait {
-    fn get_signature(&self, params: &HashMap<&str, &str>) -> Result<String, String>;
+    fn get_signature(&self, params: &BTreeMap<&str, &str>) -> Result<String, String>;
     fn new(api_key: String, secret: String) -> Result<Self, String>
     where
         Self: Sized;
     fn get_api_url(&self) -> &str;
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]>;
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]>;
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
 }
 
@@ -46,7 +46,7 @@ impl BinanceTrait for Binance {
     fn new(api_key: String, secret: String) -> Result<Self, String> {
         Binance::validate_api_credentials(&api_key, &secret)?;
 
-        let endpoint = HashMap::from([
+        let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "api/v3/order".to_string()]),
             ("cancel_order".to_string(), ["DELETE".to_string(), "api/v3/order".to_string()])
         ]);
@@ -63,7 +63,7 @@ impl BinanceTrait for Binance {
         &self.api_url
     }
 
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]> {
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]> {
         &self.endpoint
     }
 
@@ -71,7 +71,7 @@ impl BinanceTrait for Binance {
         self.endpoint.get(key)
     }
 
-    fn get_signature(&self, params: &HashMap<&str, &str>) -> Result<String, String> {
+    fn get_signature(&self, params: &BTreeMap<&str, &str>) -> Result<String, String> {
         let query_string = params.iter()
             .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
@@ -92,7 +92,7 @@ impl Exchange for Binance {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let mut params = HashMap::from([
+        let mut params = BTreeMap::from([
             ("symbol", req["symbol"].as_str().unwrap_or_default()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("type", req["order_type"].as_str().unwrap_or_default()),
@@ -127,7 +127,7 @@ impl Exchange for Binance {
     async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let mut params = HashMap::from([
+        let mut params = BTreeMap::from([
             ("symbol", req["symbol"].as_str().unwrap_or_default()),
             ("orderId", req["order_id"].as_str().unwrap_or_default()),
             ("timestamp", timestamp),
@@ -155,6 +155,10 @@ impl Exchange for Binance {
         Ok(json_value)
     }
 
+    async fn get_order_book(&self, req: Value) -> Result<Value, String> {
+        return Err("not implemented".to_string());
+    }
+    
     fn get_name(&self) -> String {
         "Binance".to_string()
     }
