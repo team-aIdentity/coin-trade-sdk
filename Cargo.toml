@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.81"
 base64 = "0.22.1"
+dotenv = "0.15.0"
 hex = "0.4.3"
 hmac = "0.12.1"
 http = "1.1.0"

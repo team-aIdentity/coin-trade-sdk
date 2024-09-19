@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use async_trait::async_trait;
 use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{from_slice, Value};
@@ -15,7 +15,7 @@ pub struct Bithumb {
     api_url: String,
     api_key: String,
     secret: String,
-    endpoint: HashMap<String, [String; 2]>,
+    endpoint: BTreeMap<String, [String; 2]>,
 }
 
 #[allow(dead_code)]
@@ -24,10 +24,10 @@ pub trait BithumbTrait {
     where
         Self: Sized;
     fn get_api_url(&self) -> &str;
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]>;
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]>;
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
     fn get_json(&self, query_hash: String) -> Result<String, String>;
-    fn get_query_hash(&self, params: &HashMap<&str, &str>) -> Result<String, String>;
+    fn get_query_hash(&self, params: &BTreeMap<&str, &str>) -> Result<String, String>;
 }
 
 impl Bithumb {
@@ -50,7 +50,7 @@ impl BithumbTrait for Bithumb {
     fn new(api_key: String, secret: String) -> Result<Self, String> {
         Bithumb::validate_api_credentials(&api_key, &secret)?;
 
-        let endpoint = HashMap::from([
+        let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "v1/orders".to_string()]),
             ("cancel_order".to_string(), ["DELETE".to_string(), "v1/order".to_string()])
         ]);
@@ -67,7 +67,7 @@ impl BithumbTrait for Bithumb {
         &self.api_url
     }
 
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]> {
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]> {
         &self.endpoint
     }
 
@@ -77,7 +77,7 @@ impl BithumbTrait for Bithumb {
 
     fn get_json(&self, query_hash: String) -> Result<String, String> {
         let nonce = Uuid::new_v4().to_string();
-        let payload = HashMap::from([
+        let payload = BTreeMap::from([
             ("access_key".to_string(), self.api_key.clone()),
             ("nonce".to_string(), nonce),
             ("timestamp".to_string(), get_current_timestamp_in_millis().to_string()),
@@ -91,7 +91,7 @@ impl BithumbTrait for Bithumb {
             .map_err(|e| e.to_string())
     }
 
-    fn get_query_hash(&self, params: &HashMap<&str, &str>) -> Result<String, String> {
+    fn get_query_hash(&self, params: &BTreeMap<&str, &str>) -> Result<String, String> {
         let serialized_params = serde_json::to_string(params).map_err(|e| e.to_string())?;
         let query_string = encode(&serialized_params);
 
@@ -106,7 +106,7 @@ impl BithumbTrait for Bithumb {
 #[async_trait]
 impl Exchange for Bithumb {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
-        let params = HashMap::from([
+        let params = BTreeMap::from([
             ("market", req["symbol"].as_str().unwrap_or_default()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("ord_type", req["order_type"].as_str().unwrap_or_default()),
@@ -138,7 +138,7 @@ impl Exchange for Bithumb {
     }
 
     async fn cancel_order(&self, req: Value) -> Result<Value, String> {
-        let params = HashMap::from([
+        let params = BTreeMap::from([
             ("uuid", req["order_id"].as_str().unwrap_or_default()),
         ]);
 
@@ -165,6 +165,10 @@ impl Exchange for Bithumb {
         Ok(json_value)
     }
 
+    async fn get_order_book(&self, req: Value) -> Result<Value, String> {
+        return Err("not implemented".to_string());
+    }
+    
     fn get_name(&self) -> String {
         "Bithumb".to_string()
     }

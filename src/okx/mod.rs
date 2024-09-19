@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use async_trait::async_trait;
 use http::header::CONTENT_TYPE;
 use serde_json::{from_slice, Value};
@@ -14,17 +14,17 @@ pub struct Okx {
     api_key: String,
     secret: String,
     passphrase: String,
-    endpoint: HashMap<String, [String; 2]>,
+    endpoint: BTreeMap<String, [String; 2]>,
 }
 
 #[allow(dead_code)]
 pub trait OkxTrait {
-    fn get_signature(&self, params: &HashMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String>;
+    fn get_signature(&self, params: &BTreeMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String>;
     fn new(api_key: String, secret: String, passphrase: String) -> Result<Self, String>
     where
         Self: Sized;
     fn get_api_url(&self) -> &str;
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]>;
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]>;
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
 }
 
@@ -51,7 +51,7 @@ impl OkxTrait for Okx {
     fn new(api_key: String, secret: String, passphrase: String) -> Result<Self, String> {
         Okx::validate_api_credentials(&api_key, &secret, &passphrase)?;
 
-        let endpoint = HashMap::from([
+        let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "api/v5/trade/order".to_string()]),
             ("cancel_order".to_string(), ["POST".to_string(), "api/v5/trade/cancel-order".to_string()])
         ]);
@@ -69,7 +69,7 @@ impl OkxTrait for Okx {
         &self.api_url
     }
 
-    fn get_end_point(&self) -> &HashMap<String, [String; 2]> {
+    fn get_end_point(&self) -> &BTreeMap<String, [String; 2]> {
         &self.endpoint
     }
 
@@ -77,7 +77,7 @@ impl OkxTrait for Okx {
         self.endpoint.get(key)
     }
 
-    fn get_signature(&self, params: &HashMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String> {
+    fn get_signature(&self, params: &BTreeMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String> {
         let query_string = params.iter()
             .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
@@ -99,7 +99,7 @@ impl Exchange for Okx {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let params = HashMap::from([
+        let params = BTreeMap::from([
             ("instId", req["symbol"].as_str().unwrap_or_default()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("ordType", req["order_type"].as_str().unwrap_or_default()),
@@ -140,7 +140,7 @@ impl Exchange for Okx {
     async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let get_current_timestamp_in_millis = get_current_timestamp_in_millis().to_string();
         let timestamp = get_current_timestamp_in_millis.as_str();
-        let params = HashMap::from([
+        let params = BTreeMap::from([
             ("instId", req["symbol"].as_str().unwrap_or_default()),
             ("ordId", req["order_id"].as_str().unwrap_or_default()),
         ]);
@@ -172,6 +172,10 @@ impl Exchange for Okx {
         let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
 
         Ok(json_value)
+    }
+
+    async fn get_order_book(&self, req: Value) -> Result<Value, String> {
+        return Err("not implemented".to_string());
     }
 
     fn get_name(&self) -> String {

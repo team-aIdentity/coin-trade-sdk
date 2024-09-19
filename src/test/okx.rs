@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::okx::{Okx, OkxTrait};
 
 // Helper function: Create a test Okx object
@@ -43,7 +43,7 @@ fn test_new_okx_with_empty_credentials() {
 fn test_get_end_point() {
     let okx = create_test_okx();
     let endpoints = okx.get_end_point();
-    let expected_endpoints = HashMap::from([
+    let expected_endpoints = BTreeMap::from([
         ("make_order".to_string(), ["POST".to_string(), "api/v5/trade/order".to_string()]),
         ("cancel_order".to_string(), ["POST".to_string(), "api/v5/trade/cancel-order".to_string()])
     ]);
@@ -73,7 +73,7 @@ fn test_get_end_point_with_key_non_existing() {
 #[test]
 fn test_get_signature() {
     let okx = create_test_okx();
-    let params = HashMap::from([
+    let params = BTreeMap::from([
         ("instId", "BTC-USDT"),
         ("side", "buy"),
         ("ordType", "limit"),

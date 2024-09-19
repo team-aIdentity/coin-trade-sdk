@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -16,10 +16,11 @@ pub mod upbit;
 pub trait Exchange {
     async fn place_order(&self, req: Value) -> Result<Value, String>;
     async fn cancel_order(&self, req: Value) -> Result<Value, String>;
+    async fn get_order_book(&self, req:Value) -> Result<Value, String>;
     fn get_name(&self) -> String;
 }
 
-async fn send(req: Request<HashMap<&str, &str>>) -> Result<http::Response<Vec<u8>> , String> {
+async fn send(req: Request<BTreeMap<&str, &str>>) -> Result<http::Response<Vec<u8>> , String> {
     let client = Client::new();
     let uri = req.uri().to_string();
     let url = Url::parse(&uri).unwrap();
@@ -33,16 +34,14 @@ async fn send(req: Request<HashMap<&str, &str>>) -> Result<http::Response<Vec<u8
 
     match content_type {
         "application/x-www-form-urlencoded" => {
-            let mut form_data = HashMap::new();
+            let mut form_data = BTreeMap::new();
             for (key, value) in req.body() {
                 form_data.insert(key.to_string(), value.to_string());
             }
-            println!("{:?}", form_data);
             request_builder = request_builder.form(&form_data);
         },
         "application/json" => {
             let json_body = serde_json::to_value(req.body()).map_err(|e| e.to_string())?;
-            println!("{:?}", json_body);
             request_builder = request_builder.json(&json_body);
         },
         _ => return Err("Unsupported Content-Type".into()),

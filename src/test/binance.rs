@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::binance::{Binance, BinanceTrait};
 
@@ -39,7 +39,7 @@ fn test_new_binance_with_empty_credentials() {
 fn test_get_end_point() {
     let binance = create_test_binance();
     let endpoints = binance.get_end_point();
-    let expected_endpoints = HashMap::from([
+    let expected_endpoints = BTreeMap::from([
         ("make_order".to_string(), ["POST".to_string(), "api/v3/order".to_string()]),
         ("cancel_order".to_string(), ["DELETE".to_string(), "api/v3/order".to_string()]),
     ]);
@@ -69,7 +69,7 @@ fn test_get_end_point_with_key_non_existing() {
 #[test]
 fn test_get_signature() {
     let binance = create_test_binance();
-    let params = HashMap::from([
+    let params = BTreeMap::from([
         ("symbol", "BTCUSDT"),
         ("side", "BUY"),
         ("type", "LIMIT"),
