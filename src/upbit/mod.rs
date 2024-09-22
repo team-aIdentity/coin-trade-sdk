@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use async_trait::async_trait;
 use serde_json::{ from_slice, Value };
-use http::{ header::{ ACCEPT, AUTHORIZATION, CONTENT_TYPE }, Request };
-use sha2::{ Sha512, Digest };
+use http::{ header::{ ACCEPT, AUTHORIZATION, CONTENT_TYPE }, HeaderName, Request };
+use sha2::{ Digest, Sha256, Sha512 };
 use uuid::Uuid;
 use hmac::{ Hmac, Mac };
 use jwt::SignWithKey;
@@ -24,23 +24,56 @@ pub trait UpbitTrait {
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
     fn send_req_with_sign(
         &self,
-        param: BTreeMap<&str, &str>
-    ) -> impl std::future::Future<Output = Value> + Send;
+        param: BTreeMap<&str, &str>,
+        endpoint_key: &str
+    ) -> impl std::future::Future<Output = Result<Value, String>> + Send;
 }
 
 impl Upbit {
     fn validate_api_credentials(api_key: &str, secret: &str) -> Result<(), String> {
-        if api_key.is_empty() {
-            return Err("API key cannot be empty".to_string());
-        }
-        if secret.is_empty() {
-            return Err("Secret cannot be empty".to_string());
+        if api_key.is_empty() || secret.is_empty() {
+            return Err("API key and Secret cannot be empty".to_string());
         }
         Ok(())
     }
 
-    fn create_hmac_key(&self) -> Result<Hmac<Sha512>, String> {
+    fn create_hmac_key(&self) -> Result<Hmac<Sha256>, String> {
         Hmac::new_from_slice(self.secret.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    fn build_request<'a>(
+        &'a self,
+        method: &str,
+        uri: &str,
+        headers: Vec<(HeaderName, &str)>,
+        body: BTreeMap<&'a str, &'a str>
+    ) -> Result<Request<BTreeMap<&str, &str>>, String> {
+        let mut builder = Request::builder().method(method).uri(uri);
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
+        builder.body(body).map_err(|e| e.to_string())
+    }
+
+    fn get_authorization_header(&self, param: BTreeMap<&str, &str>) -> Result<String, String> {
+        let query = get_query_string(param.clone());
+
+        let mut hasher = Sha512::new();
+        hasher.update(query.as_bytes());
+        let query_hash = hex::encode(hasher.finalize());
+
+        let nonce = Uuid::new_v4().to_string();
+        let payload = BTreeMap::from([
+            ("access_key", self.api_key.clone()),
+            ("nonce", nonce),
+            ("query_hash", query_hash),
+            ("query_hash_alg", "SHA512".to_string()),
+        ]);
+
+        let key = self.create_hmac_key()?;
+        let jwt_token = payload.sign_with_key(&key).map_err(|e| e.to_string())?;
+
+        Ok(format!("Bearer {}", jwt_token))
     }
 }
 
@@ -74,53 +107,28 @@ impl UpbitTrait for Upbit {
         self.endpoint.get(key)
     }
 
-    async fn send_req_with_sign(&self, param: BTreeMap<&str, &str>) -> Value {
-        let query = get_query_string(param.clone());
-
-        let mut hasher = Sha512::new();
-        hasher.update(query.as_bytes());
-        let query_hash = hex::encode(hasher.finalize());
-
-        let nonce = Uuid::new_v4().to_string();
-
-        let payload = BTreeMap::from([
-            ("access_key", self.api_key.clone()),
-            ("nonce", nonce),
-            ("query_hash", query_hash),
-            ("query_hash_alg", "SHA512".to_string()),
-        ]);
-
-        let key = self.create_hmac_key().unwrap();
-        let jwt_token = payload
-            .sign_with_key(&key)
-            .map_err(|e| e.to_string())
-            .unwrap();
-
-        let authorization = format!("Bearer {}", jwt_token);
+    async fn send_req_with_sign(
+        &self,
+        param: BTreeMap<&str, &str>,
+        endpoint_key: &str
+    ) -> Result<Value, String> {
+        let authorization = self.get_authorization_header(param.clone())?;
 
         let base = self
-            .get_end_point_with_key("make_order")
-            .ok_or("Endpoint not found".to_string())
-            .unwrap();
+            .get_end_point_with_key(endpoint_key)
+            .ok_or("Endpoint not found".to_string())?;
 
-        let request = Request::builder()
-            .method(base[0].as_str())
-            .uri(format!("{}{}", self.api_url, base[1]))
-            .header(AUTHORIZATION, authorization)
-            .header(CONTENT_TYPE, "application/json")
-            .body(param)
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let uri = format!("{}{}", self.api_url, base[1]);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(AUTHORIZATION, &authorization), (CONTENT_TYPE, "application/json")],
+            param
+        )?;
 
-        let response = send(request).await
-            .map_err(|e| e.to_string())
-            .unwrap();
+        let response = send(request).await.map_err(|e| e.to_string())?;
         let body = response.into_body();
-        let json_value: Value = from_slice(&body)
-            .map_err(|e| e.to_string())
-            .unwrap();
-
-        json_value
+        from_slice(&body).map_err(|e| e.to_string())
     }
 }
 
@@ -135,13 +143,13 @@ impl Exchange for Upbit {
             ("volume", req["amount"].as_str().unwrap_or_default()),
         ]);
 
-        Ok(self.send_req_with_sign(params).await)
+        self.send_req_with_sign(params, "make_order").await
     }
 
     async fn cancel_order(&self, req: Value) -> Result<Value, String> {
         let params = BTreeMap::from([("uuid", req["order_id"].as_str().unwrap_or_default())]);
 
-        Ok(self.send_req_with_sign(params).await)
+        self.send_req_with_sign(params, "cancel_order").await
     }
 
     async fn get_order_book(&self, req: Value) -> Result<Value, String> {
@@ -152,23 +160,21 @@ impl Exchange for Upbit {
         ]);
 
         let query_string = get_query_string(params);
-
         let base = self
             .get_end_point_with_key("order_book")
             .ok_or("Endpoint not found".to_string())?;
 
-        let request = Request::builder()
-            .method(base[0].as_str())
-            .uri(format!("{}{}?{}", self.api_url, base[1], query_string))
-            .header(ACCEPT, "application/json")
-            .body(BTreeMap::new())
-            .map_err(|e| e.to_string())?;
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
 
         let response = send(request).await.map_err(|e| e.to_string())?;
         let body = response.into_body();
-        let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
-
-        Ok(json_value)
+        from_slice(&body).map_err(|e| e.to_string())
     }
 
     fn get_name(&self) -> String {
