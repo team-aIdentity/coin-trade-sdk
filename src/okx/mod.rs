@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use async_trait::async_trait;
 use http::header::CONTENT_TYPE;
-use serde_json::{from_slice, Value};
+use serde_json::{ from_slice, Value };
 use http::Request;
 use sha2::Sha256;
-use hmac::{Hmac, Mac};
-use base64::{Engine as _, engine::general_purpose};
+use hmac::{ Hmac, Mac };
+use base64::{ Engine as _, engine::general_purpose };
 
-use crate::{get_current_timestamp_in_millis, send, Exchange};
+use crate::{ get_current_timestamp_in_millis, send, Exchange };
 
 pub struct Okx {
     api_url: String,
@@ -19,17 +19,26 @@ pub struct Okx {
 
 #[allow(dead_code)]
 pub trait OkxTrait {
-    fn get_signature(&self, params: &BTreeMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String>;
+    fn get_signature(
+        &self,
+        params: &BTreeMap<&str, &str>,
+        timestamp: String,
+        method: String,
+        endpoint: String
+    ) -> Result<String, String>;
     fn new(api_key: String, secret: String, passphrase: String) -> Result<Self, String>
-    where
-        Self: Sized;
+        where Self: Sized;
     fn get_api_url(&self) -> &str;
     fn get_end_point(&self) -> &BTreeMap<String, [String; 2]>;
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
 }
 
 impl Okx {
-    fn validate_api_credentials(api_key: &str, secret: &str, passphrase: &str) -> Result<(), String> {
+    fn validate_api_credentials(
+        api_key: &str,
+        secret: &str,
+        passphrase: &str
+    ) -> Result<(), String> {
         if api_key.is_empty() {
             return Err("API key cannot be empty".to_string());
         }
@@ -53,7 +62,10 @@ impl OkxTrait for Okx {
 
         let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "api/v5/trade/order".to_string()]),
-            ("cancel_order".to_string(), ["POST".to_string(), "api/v5/trade/cancel-order".to_string()])
+            (
+                "cancel_order".to_string(),
+                ["POST".to_string(), "api/v5/trade/cancel-order".to_string()],
+            ),
         ]);
 
         Ok(Self {
@@ -77,8 +89,15 @@ impl OkxTrait for Okx {
         self.endpoint.get(key)
     }
 
-    fn get_signature(&self, params: &BTreeMap<&str, &str>, timestamp: String, method: String, endpoint: String) -> Result<String, String> {
-        let query_string = params.iter()
+    fn get_signature(
+        &self,
+        params: &BTreeMap<&str, &str>,
+        timestamp: String,
+        method: String,
+        endpoint: String
+    ) -> Result<String, String> {
+        let query_string = params
+            .iter()
             .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
             .join("&");
@@ -105,7 +124,7 @@ impl Exchange for Okx {
             ("ordType", req["order_type"].as_str().unwrap_or_default()),
             ("px", req["price"].as_str().unwrap_or_default()),
             ("sz", req["amount"].as_str().unwrap_or_default()),
-            ("tdMode", "cash")
+            ("tdMode", "cash"),
         ]);
 
         let base = self
@@ -113,12 +132,12 @@ impl Exchange for Okx {
             .ok_or("Endpoint not found".to_string())?;
 
         let signature = self.get_signature(
-            &params, 
-            timestamp.to_string(), 
-            base[0].to_string(), 
+            &params,
+            timestamp.to_string(),
+            base[0].to_string(),
             base[1].to_string()
         )?;
-                
+
         let request = Request::builder()
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
@@ -150,12 +169,12 @@ impl Exchange for Okx {
             .ok_or("Endpoint not found".to_string())?;
 
         let signature = self.get_signature(
-            &params, 
-            timestamp.to_string(), 
-            base[0].to_string(), 
+            &params,
+            timestamp.to_string(),
+            base[0].to_string(),
             base[1].to_string()
         )?;
-                
+
         let request = Request::builder()
             .method(base[0].as_str())
             .uri(format!("{}{}", self.api_url, base[1]))
@@ -182,4 +201,3 @@ impl Exchange for Okx {
         "Okx".to_string()
     }
 }
-
