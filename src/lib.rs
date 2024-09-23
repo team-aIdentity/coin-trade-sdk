@@ -4,6 +4,7 @@ use std::time::{ SystemTime, UNIX_EPOCH };
 use async_trait::async_trait;
 use http::{ Request, Version };
 use reqwest::{ Client, Response };
+use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
 
@@ -16,8 +17,36 @@ pub mod upbit;
 pub trait Exchange {
     async fn place_order(&self, req: Value) -> Result<Value, String>;
     async fn cancel_order(&self, req: Value) -> Result<Value, String>;
-    async fn get_order_book(&self, req: Value) -> Result<Value, String>;
+    async fn get_order_book(&self, req: Value) -> Result<OrderBook, String>;
     fn get_name(&self) -> String;
+}
+
+pub struct Order {
+    pub exchange: String,
+    pub ord_id: String,
+    pub side: String,
+    pub ord_type: String,
+    pub price: String,
+    pub state: String,
+    pub market: String,
+    pub volume: String,
+    pub create_at: String,
+    pub amount: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct OrderBookUnit {
+    pub ask_price: String,
+    pub bid_price: String,
+    pub ask_size: String,
+    pub bid_size: String,
+}
+
+#[derive(Debug)]
+pub struct OrderBook {
+    pub market: String,
+    pub exchange: String,
+    pub orderbook_unit: Vec<OrderBookUnit>,
 }
 
 async fn send(req: Request<BTreeMap<&str, &str>>) -> Result<http::Response<Vec<u8>>, String> {

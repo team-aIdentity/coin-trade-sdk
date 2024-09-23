@@ -7,7 +7,7 @@ use uuid::Uuid;
 use hmac::{ Hmac, Mac };
 use jwt::SignWithKey;
 
-use crate::{ get_query_string, send, Exchange };
+use crate::{ get_query_string, send, Exchange, OrderBook, OrderBookUnit };
 
 pub struct Upbit {
     api_url: String,
@@ -135,8 +135,9 @@ impl UpbitTrait for Upbit {
 #[async_trait]
 impl Exchange for Upbit {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
+        let symbol = parse_symbol(req["symbol"].as_str().unwrap());
         let params = BTreeMap::from([
-            ("market", req["symbol"].as_str().unwrap_or_default()),
+            ("market", symbol.as_str()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("ord_type", req["order_type"].as_str().unwrap_or_default()),
             ("price", req["price"].as_str().unwrap_or_default()),
@@ -152,7 +153,7 @@ impl Exchange for Upbit {
         self.send_req_with_sign(params, "cancel_order").await
     }
 
-    async fn get_order_book(&self, req: Value) -> Result<Value, String> {
+    async fn get_order_book(&self, req: Value) -> Result<OrderBook, String> {
         let symbol = parse_symbol(req["symbol"].as_str().unwrap());
         let params = BTreeMap::from([
             ("markets", symbol.as_str()),
@@ -174,7 +175,8 @@ impl Exchange for Upbit {
 
         let response = send(request).await.map_err(|e| e.to_string())?;
         let body = response.into_body();
-        from_slice(&body).map_err(|e| e.to_string())
+        let res: Value = from_slice(&body).unwrap();
+        Ok(parse_orderbook(res)?)
     }
 
     fn get_name(&self) -> String {
@@ -185,4 +187,42 @@ impl Exchange for Upbit {
 fn parse_symbol(symbol: &str) -> String {
     let v: Vec<&str> = symbol.split("/").collect();
     format!("{}-{}", v[1], v[0])
+}
+
+fn encode_symbol(symbol: &str) -> String {
+    let v: Vec<&str> = symbol.split("-").collect();
+    format!("{}/{}", v[1], v[0])
+}
+
+fn parse_order(order_res: Value) -> Value {
+    todo!()
+}
+
+fn parse_orderbook(orderbook_res: Value) -> Result<OrderBook, String> {
+    // Extract and convert the orderbook_units
+    let orderbook_units = orderbook_res[0]["orderbook_units"]
+        .as_array()
+        .ok_or("orderbook_units field is not an array")?
+        .iter()
+        .map(|unit| {
+            let ask_price = unit["ask_price"].as_f64().unwrap_or(0.0).to_string();
+            let bid_price = unit["bid_price"].as_f64().unwrap_or(0.0).to_string();
+            let ask_size = unit["ask_size"].as_f64().unwrap_or(0.0).to_string();
+            let bid_size = unit["bid_size"].as_f64().unwrap_or(0.0).to_string();
+            OrderBookUnit {
+                ask_price,
+                bid_price,
+                ask_size,
+                bid_size,
+            }
+        })
+        .collect::<Vec<OrderBookUnit>>();
+
+    // Create and return the OrderBook struct
+    let symbol = encode_symbol(orderbook_res[0]["market"].as_str().unwrap_or_default());
+    Ok(OrderBook {
+        market: symbol,
+        exchange: "Upbit".to_string(),
+        orderbook_unit: orderbook_units,
+    })
 }
