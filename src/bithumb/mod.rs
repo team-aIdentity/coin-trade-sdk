@@ -1,15 +1,13 @@
 use std::collections::BTreeMap;
 use async_trait::async_trait;
-use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde_json::{from_slice, Value};
-use http::Request;
-use sha2::{Sha512, Digest};
+use serde_json::{ from_slice, Value };
+use http::{ header::{ ACCEPT, AUTHORIZATION, CONTENT_TYPE }, HeaderName, Request };
+use sha2::{ Digest, Sha512 };
 use uuid::Uuid;
-use hmac::{Hmac, Mac};
+use hmac::{ Hmac, Mac };
 use jwt::SignWithKey;
-use urlencoding::encode;
 
-use crate::{get_current_timestamp_in_millis, send, Exchange};
+use crate::{ get_query_string, send, Exchange, OrderBook, OrderBookUnit };
 
 pub struct Bithumb {
     api_url: String,
@@ -20,29 +18,62 @@ pub struct Bithumb {
 
 #[allow(dead_code)]
 pub trait BithumbTrait {
-    fn new(api_key: String, secret: String) -> Result<Self, String>
-    where
-        Self: Sized;
+    fn new(api_key: String, secret: String) -> Result<Self, String> where Self: Sized;
     fn get_api_url(&self) -> &str;
     fn get_end_point(&self) -> &BTreeMap<String, [String; 2]>;
     fn get_end_point_with_key(&self, key: &str) -> Option<&[String; 2]>;
-    fn get_json(&self, query_hash: String) -> Result<String, String>;
-    fn get_query_hash(&self, params: &BTreeMap<&str, &str>) -> Result<String, String>;
+    fn send_req_with_sign(
+        &self,
+        param: BTreeMap<&str, &str>,
+        endpoint_key: &str
+    ) -> impl std::future::Future<Output = Result<Value, String>> + Send;
 }
 
 impl Bithumb {
     fn validate_api_credentials(api_key: &str, secret: &str) -> Result<(), String> {
-        if api_key.is_empty() {
-            return Err("API key cannot be empty".to_string());
-        }
-        if secret.is_empty() {
-            return Err("Secret cannot be empty".to_string());
+        if api_key.is_empty() || secret.is_empty() {
+            return Err("API key and Secret cannot be empty".to_string());
         }
         Ok(())
     }
 
     fn create_hmac_key(&self) -> Result<Hmac<Sha512>, String> {
         Hmac::new_from_slice(self.secret.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    fn build_request<'a>(
+        &'a self,
+        method: &str,
+        uri: &str,
+        headers: Vec<(HeaderName, &str)>,
+        body: BTreeMap<&'a str, &'a str>
+    ) -> Result<Request<BTreeMap<&'a str, &'a str>>, String> {
+        let mut builder = Request::builder().method(method).uri(uri);
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
+        builder.body(body).map_err(|e| e.to_string())
+    }
+
+    fn get_authorization_header(&self, param: BTreeMap<&str, &str>) -> Result<String, String> {
+        let query = get_query_string(param.clone());
+
+        let mut hasher = Sha512::new();
+        hasher.update(query.as_bytes());
+        let query_hash = hex::encode(hasher.finalize());
+
+        let nonce = Uuid::new_v4().to_string();
+        let payload = BTreeMap::from([
+            ("access_key", self.api_key.clone()),
+            ("nonce", nonce),
+            ("query_hash", query_hash),
+            ("query_hash_alg", "SHA512".to_string()),
+        ]);
+
+        let key = self.create_hmac_key()?;
+        let jwt_token = payload.sign_with_key(&key).map_err(|e| e.to_string())?;
+
+        Ok(format!("Bearer {}", jwt_token))
     }
 }
 
@@ -53,7 +84,7 @@ impl BithumbTrait for Bithumb {
         let endpoint = BTreeMap::from([
             ("make_order".to_string(), ["POST".to_string(), "v1/orders".to_string()]),
             ("cancel_order".to_string(), ["DELETE".to_string(), "v1/order".to_string()]),
-            ("order_book".to_string(), ["GET".to_string(), "v1/orderbook".to_string()])
+            ("order_book".to_string(), ["GET".to_string(), "v1/orderbook".to_string()]),
         ]);
 
         Ok(Self {
@@ -76,125 +107,75 @@ impl BithumbTrait for Bithumb {
         self.endpoint.get(key)
     }
 
-    fn get_json(&self, query_hash: String) -> Result<String, String> {
-        let nonce = Uuid::new_v4().to_string();
-        let payload = BTreeMap::from([
-            ("access_key".to_string(), self.api_key.clone()),
-            ("nonce".to_string(), nonce),
-            ("timestamp".to_string(), get_current_timestamp_in_millis().to_string()),
-            ("query_hash".to_string(), query_hash),
-            ("query_hash_alg".to_string(), "SHA512".to_string()),
-        ]);
+    async fn send_req_with_sign(
+        &self,
+        param: BTreeMap<&str, &str>,
+        endpoint_key: &str
+    ) -> Result<Value, String> {
+        let authorization = self.get_authorization_header(param.clone())?;
 
-        let key = self.create_hmac_key()?;
-        payload
-            .sign_with_key(&key)
-            .map_err(|e| e.to_string())
-    }
+        let base = self
+            .get_end_point_with_key(endpoint_key)
+            .ok_or("Endpoint not found".to_string())?;
 
-    fn get_query_hash(&self, params: &BTreeMap<&str, &str>) -> Result<String, String> {
-        let serialized_params = serde_json::to_string(params).map_err(|e| e.to_string())?;
-        let query_string = encode(&serialized_params);
+        let uri = format!("{}{}", self.api_url, base[1]);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(AUTHORIZATION, &authorization), (CONTENT_TYPE, "application/json")],
+            param
+        )?;
 
-        let mut hasher = Sha512::new();
-        hasher.update(query_string.as_bytes());
-        let result = hasher.finalize();
-
-        Ok(hex::encode(result))
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+        from_slice(&body).map_err(|e| e.to_string())
     }
 }
 
 #[async_trait]
 impl Exchange for Bithumb {
     async fn place_order(&self, req: Value) -> Result<Value, String> {
+        let symbol = parse_symbol(req["symbol"].as_str().unwrap());
         let params = BTreeMap::from([
-            ("market", req["symbol"].as_str().unwrap_or_default()),
+            ("market", symbol.as_str()),
             ("side", req["side"].as_str().unwrap_or_default()),
             ("ord_type", req["order_type"].as_str().unwrap_or_default()),
             ("price", req["price"].as_str().unwrap_or_default()),
             ("volume", req["amount"].as_str().unwrap_or_default()),
         ]);
 
-        let query_hash = self.get_query_hash(&params)?;
-        let signed_payload = self.get_json(query_hash)?;
-
-        let authorization = format!("Bearer {}", signed_payload);
-        let base = self
-            .get_end_point_with_key("make_order")
-            .ok_or("Endpoint not found".to_string())?;
-        
-        let request = Request::builder()
-            .method(base[0].as_str())
-            .uri(format!("{}{}", self.api_url, base[1]))
-            .header(AUTHORIZATION, authorization)
-            .header(CONTENT_TYPE, "application/json")
-            .body(params)
-            .map_err(|e| e.to_string())?;
-
-        let response = send(request).await.map_err(|e| e.to_string())?;
-        let body = response.into_body();
-        let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
-
-        Ok(json_value)
+        self.send_req_with_sign(params, "make_order").await
     }
 
     async fn cancel_order(&self, req: Value) -> Result<Value, String> {
-        let params = BTreeMap::from([
-            ("uuid", req["order_id"].as_str().unwrap_or_default()),
-        ]);
+        let params = BTreeMap::from([("uuid", req["order_id"].as_str().unwrap_or_default())]);
 
-        let query_hash = self.get_query_hash(&params)?;
-        let signed_payload = self.get_json(query_hash)?;
-
-        let authorization = format!("Bearer {}", signed_payload);
-        let base = self
-            .get_end_point_with_key("cancel_order")
-            .ok_or("Endpoint not found".to_string())?;
-        
-        let request = Request::builder()
-            .method(base[0].as_str())
-            .uri(format!("{}{}", self.api_url, base[1]))
-            .header(AUTHORIZATION, authorization)
-            .header(CONTENT_TYPE, "application/json")
-            .body(params)
-            .map_err(|e| e.to_string())?;
-
-        let response = send(request).await.map_err(|e| e.to_string())?;
-        let body = response.into_body();
-        let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
-
-        Ok(json_value)
+        self.send_req_with_sign(params, "cancel_order").await
     }
 
-    async fn get_order_book(&self, req: Value) -> Result<Value, String> {
+    async fn get_order_book(&self, req: Value) -> Result<OrderBook, String> {
         let symbol = parse_symbol(req["symbol"].as_str().unwrap());
-        let params = BTreeMap::from([
-            ("markets", symbol.as_str())
-        ]);
+        let params = BTreeMap::from([("markets", symbol.as_str())]);
 
-        let query_string = params.iter()
-            .map(|(key, value)| format!("{}={}", key, value))
-            .collect::<Vec<String>>()
-            .join("&");
-
+        let query_string = get_query_string(params);
         let base = self
             .get_end_point_with_key("order_book")
             .ok_or("Endpoint not found".to_string())?;
-        println!("{}{}?{}", self.api_url, base[1], query_string);
-        let request = Request::builder()
-            .method(base[0].as_str())
-            .uri(format!("{}{}?{}", self.api_url, base[1], query_string))
-            .header(ACCEPT, "application/json")
-            .body(BTreeMap::new())
-            .map_err(|e| e.to_string())?;
+
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
 
         let response = send(request).await.map_err(|e| e.to_string())?;
         let body = response.into_body();
-        let json_value: Value = from_slice(&body).map_err(|e| e.to_string())?;
-
-        Ok(json_value)
+        let res: Value = from_slice(&body).unwrap();
+        Ok(parse_orderbook(res)?)
     }
-    
+
     fn get_name(&self) -> String {
         "Bithumb".to_string()
     }
@@ -205,4 +186,34 @@ fn parse_symbol(symbol: &str) -> String {
     format!("{}-{}", v[1], v[0])
 }
 
+fn encode_symbol(symbol: &str) -> String {
+    let v: Vec<&str> = symbol.split("-").collect();
+    format!("{}/{}", v[1], v[0])
+}
 
+fn parse_orderbook(orderbook_res: Value) -> Result<OrderBook, String> {
+    let orderbook_units = orderbook_res[0]["orderbook_units"]
+        .as_array()
+        .ok_or("orderbook_units field is not an array")?
+        .iter()
+        .map(|unit| {
+            let ask_price = unit["ask_price"].as_f64().unwrap_or(0.0).to_string();
+            let bid_price = unit["bid_price"].as_f64().unwrap_or(0.0).to_string();
+            let ask_size = unit["ask_size"].as_f64().unwrap_or(0.0).to_string();
+            let bid_size = unit["bid_size"].as_f64().unwrap_or(0.0).to_string();
+            OrderBookUnit {
+                ask_price,
+                bid_price,
+                ask_size,
+                bid_size,
+            }
+        })
+        .collect::<Vec<OrderBookUnit>>();
+
+    let symbol = encode_symbol(orderbook_res[0]["market"].as_str().unwrap_or_default());
+    Ok(OrderBook {
+        market: symbol,
+        exchange: "Bithumb".to_string(),
+        orderbook_unit: orderbook_units,
+    })
+}
