@@ -101,6 +101,7 @@ impl OkxTrait for Okx {
                 ["POST".to_string(), "api/v5/trade/cancel-order".to_string()],
             ),
             ("order_book".to_string(), ["GET".to_string(), "api/v5/market/books-full".to_string()]),
+            ("current_price".to_string(), ["GET".to_string(), "api/v5/market/price".to_string()]),
         ]);
 
         Ok(Self {
@@ -214,6 +215,35 @@ impl Exchange for Okx {
 
     fn get_name(&self) -> String {
         "Okx".to_string()
+    }
+
+    async fn get_current_price(&self, req: Value) -> Result<Value, String> {
+        let symbol = parse_symbol(req["symbol"].as_str().unwrap_or_default()); // 심볼 파싱
+        let params = BTreeMap::from([
+            ("instId", symbol.as_str()),
+            ("sz", "30"),
+        ]);
+
+        let base = self
+            .get_end_point_with_key("current_price")
+            .ok_or("Endpoint not found".to_string())?;
+
+        let query_string = get_query_string(params);
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
+
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+
+        let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        Ok(res)
     }
 }
 

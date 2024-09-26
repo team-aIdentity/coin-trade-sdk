@@ -85,6 +85,7 @@ impl BithumbTrait for Bithumb {
             ("make_order".to_string(), ["POST".to_string(), "v1/orders".to_string()]),
             ("cancel_order".to_string(), ["DELETE".to_string(), "v1/order".to_string()]),
             ("order_book".to_string(), ["GET".to_string(), "v1/orderbook".to_string()]),
+            ("current_price".to_string(), ["GET".to_string(), "v1/ticker".to_string()]),
         ]);
 
         Ok(Self {
@@ -178,6 +179,29 @@ impl Exchange for Bithumb {
 
     fn get_name(&self) -> String {
         "Bithumb".to_string()
+    }
+
+    async fn get_current_price(&self, req: Value) -> Result<Value, String> {
+        let symbol = parse_symbol(req["symbol"].as_str().unwrap());
+        let params = BTreeMap::from([("markets", symbol.as_str())]);
+
+        let query_string = get_query_string(params);
+        let base = self
+            .get_end_point_with_key("current_price")
+            .ok_or("Endpoint not found".to_string())?;
+
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
+
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+        let res: Value = from_slice(&body).unwrap();
+        Ok(res)
     }
 }
 

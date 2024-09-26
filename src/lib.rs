@@ -19,6 +19,7 @@ pub trait Exchange {
     async fn cancel_order(&self, req: Value) -> Result<Value, String>;
     async fn get_order_book(&self, req: Value) -> Result<OrderBook, String>;
     fn get_name(&self) -> String;
+    async fn get_current_price(&self, req: Value) -> Result<Value, String>;
 }
 
 pub struct Order {
@@ -32,6 +33,12 @@ pub struct Order {
     pub volume: String,
     pub create_at: String,
     pub amount: String,
+}
+
+pub struct Price {
+    pub exchange: String,
+    pub symbol: String,
+    pub price: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
