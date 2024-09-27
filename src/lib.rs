@@ -4,7 +4,7 @@ use std::time::{ SystemTime, UNIX_EPOCH };
 use async_trait::async_trait;
 use http::{ Request, Version };
 use reqwest::{ Client, Response };
-use serde::Deserialize;
+use serde::{ Deserialize, Serialize };
 use serde_json::Value;
 use url::Url;
 
@@ -41,7 +41,7 @@ pub struct Price {
     pub price: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct OrderBookUnit {
     pub ask_price: String,
     pub bid_price: String,
