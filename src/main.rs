@@ -4,7 +4,7 @@ use coin_trade_sdk::okx::{ Okx, OkxTrait };
 use coin_trade_sdk::upbit::{ Upbit, UpbitTrait };
 use coin_trade_sdk::{ Exchange, OrderBook, OrderBookUnit };
 use dotenv::dotenv;
-use serde_json::json;
+use serde_json::{ json, Value };
 use tokio;
 
 #[tokio::main]
@@ -83,7 +83,23 @@ async fn main() {
                 ).await
                 .unwrap();
         }
-
         println!("{}_get_order_book:{:?}\n", exchange.get_name(), res);
+
+        let res: Value;
+        if exchange.get_name() == "Bithumb" {
+            res = exchange
+                .get_current_price(json!({
+                "symbol": "BTC/KRW"
+            })).await
+                .unwrap();
+        } else {
+            res = exchange
+                .get_current_price(json!({
+                "symbol": "BTC/USDT"
+            })).await
+                .unwrap();
+        }
+
+        println!("{}_get_current_price:{:?}\n", exchange.get_name(), res);
     }
 }
