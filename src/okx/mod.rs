@@ -247,7 +247,7 @@ impl Exchange for Okx {
         let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
 
         // Parsing response to create Price struct
-        let symbol_name = encode_symbol(res["data"][0]["instId"].as_str().unwrap_or_default());
+        let symbol_name = req["symbol"].as_str().unwrap().to_string();
         let current_price = res["data"][0]["last"].as_str().unwrap_or_default().to_string();
 
         let price = Price {
