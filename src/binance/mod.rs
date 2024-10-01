@@ -213,7 +213,7 @@ impl Exchange for Binance {
 
         // Parsing response to create Price struct
         let symbol_name = req["symbol"].as_str().unwrap().to_string();
-        let current_price = res["price"].as_str().unwrap_or_default().to_string();
+        let current_price = res["price"].as_str().unwrap().to_string();
 
         let price = Price {
             exchange: "Binance".to_string(),

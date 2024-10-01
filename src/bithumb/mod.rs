@@ -205,7 +205,7 @@ impl Exchange for Bithumb {
 
         // Parsing response to create Price struct
         let symbol_name = req["symbol"].as_str().unwrap().to_string();
-        let current_price = res[0]["trade_price"].to_string();
+        let current_price = res[0]["trade_price"].as_f64().unwrap_or(0.0).to_string();
 
         let price = Price {
             exchange: "Bithumb".to_string(),

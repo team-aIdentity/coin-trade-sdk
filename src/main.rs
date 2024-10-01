@@ -36,9 +36,9 @@ async fn main() {
 
     let exchanges: Vec<Box<dyn Exchange>> = vec![
         upbit_exchange,
+        okx_exchange,
         binance_exchange,
-        bithumb_exchange,
-        okx_exchange
+        bithumb_exchange
     ];
 
     for exchange in exchanges {
