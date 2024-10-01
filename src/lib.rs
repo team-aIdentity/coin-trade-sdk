@@ -19,9 +19,11 @@ pub trait Exchange {
     async fn cancel_order(&self, req: Value) -> Result<Value, String>;
     async fn get_order_book(&self, req: Value) -> Result<OrderBook, String>;
     fn get_name(&self) -> String;
-    async fn get_current_price(&self, req: Value) -> Result<Value, String>;
+    async fn get_current_price(&self, req: Value) -> Result<Price, String>;
+    async fn get_coin_list(&self) -> Result<CoinList, String>;
 }
 
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Order {
     pub exchange: String,
     pub ord_id: String,
@@ -35,6 +37,7 @@ pub struct Order {
     pub amount: String,
 }
 
+#[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Price {
     pub exchange: String,
     pub symbol: String,
@@ -54,6 +57,12 @@ pub struct OrderBook {
     pub market: String,
     pub exchange: String,
     pub orderbook_unit: Vec<OrderBookUnit>,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct CoinList {
+    pub market: String,
+    pub coin_list: Vec<String>,
 }
 
 async fn send(req: Request<BTreeMap<&str, &str>>) -> Result<http::Response<Vec<u8>>, String> {

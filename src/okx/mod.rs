@@ -10,9 +10,11 @@ use crate::{
     get_current_timestamp_in_millis,
     get_query_string,
     send,
+    CoinList,
     Exchange,
     OrderBook,
     OrderBookUnit,
+    Price,
 };
 
 pub struct Okx {
@@ -101,7 +103,8 @@ impl OkxTrait for Okx {
                 ["POST".to_string(), "api/v5/trade/cancel-order".to_string()],
             ),
             ("order_book".to_string(), ["GET".to_string(), "api/v5/market/books-full".to_string()]),
-            ("current_price".to_string(), ["GET".to_string(), "api/v5/market/price".to_string()]),
+            ("current_price".to_string(), ["GET".to_string(), "api/v5/market/ticker".to_string()]),
+            ("coin_list".to_string(), ["GET".to_string(), "api/v5/public/instruments".to_string()]),
         ]);
 
         Ok(Self {
@@ -217,7 +220,7 @@ impl Exchange for Okx {
         "Okx".to_string()
     }
 
-    async fn get_current_price(&self, req: Value) -> Result<Value, String> {
+    async fn get_current_price(&self, req: Value) -> Result<Price, String> {
         let symbol = parse_symbol(req["symbol"].as_str().unwrap_or_default()); // 심볼 파싱
         let params = BTreeMap::from([
             ("instId", symbol.as_str()),
@@ -243,7 +246,54 @@ impl Exchange for Okx {
 
         let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        Ok(res)
+        // Parsing response to create Price struct
+        let symbol_name = encode_symbol(res["data"][0]["instId"].as_str().unwrap_or_default());
+        let current_price = res["data"][0]["last"].as_str().unwrap_or_default().to_string();
+
+        let price = Price {
+            exchange: "Okx".to_string(),
+            symbol: symbol_name,
+            price: current_price,
+        };
+
+        Ok(price)
+    }
+
+    async fn get_coin_list(&self) -> Result<CoinList, String> {
+        let params = BTreeMap::from([("instType", "SPOT")]);
+
+        let query_string = get_query_string(params);
+        let base = self
+            .get_end_point_with_key("coin_list")
+            .ok_or("Endpoint not found".to_string())?;
+
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
+
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+        let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Parsing response to create CoinList struct
+        let market = "Okx".to_string();
+        let coin_list = res["data"]
+            .as_array()
+            .ok_or("Response is not an array".to_string())?
+            .iter()
+            .filter_map(|coin| coin["instId"].as_str().map(|s| encode_symbol(s)))
+            .collect::<Vec<String>>();
+
+        let coin_list_struct = CoinList {
+            market,
+            coin_list,
+        };
+
+        Ok(coin_list_struct)
     }
 }
 
@@ -253,7 +303,6 @@ fn parse_symbol(symbol: &str) -> String {
 }
 
 fn encode_symbol(symbol: &str) -> String {
-    println!("{}", symbol);
     let v: Vec<&str> = symbol.split("-").collect();
     format!("{}/{}", v[0], v[1])
 }
