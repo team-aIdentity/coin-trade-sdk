@@ -99,7 +99,13 @@ async fn send(req: Request<BTreeMap<&str, &str>>) -> Result<http::Response<Vec<u
         .headers(headers)
         .build()
         .map_err(|e| e.to_string())?;
-    let response = client.execute(request).await.unwrap();
+    let response = match client.execute(request).await {
+        Ok(response) => response,
+        Err(e) => {
+            eprintln!("Failed to send request: {}", e);
+            return Err(e.to_string());
+        }
+    };
 
     let convert_reqwest_to_http = convert_reqwest_to_http(response).await;
     Ok(convert_reqwest_to_http)
