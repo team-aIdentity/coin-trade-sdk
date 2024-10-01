@@ -6,6 +6,8 @@ use http::{ Request, Version };
 use reqwest::{ Client, Response };
 use serde::{ Deserialize, Serialize };
 use serde_json::Value;
+use tokio_retry::strategy::ExponentialBackoff;
+use tokio_retry::Retry;
 use url::Url;
 
 pub mod binance;
@@ -99,13 +101,10 @@ async fn send(req: Request<BTreeMap<&str, &str>>) -> Result<http::Response<Vec<u
         .headers(headers)
         .build()
         .map_err(|e| e.to_string())?;
-    let response = match client.execute(request).await {
-        Ok(response) => response,
-        Err(e) => {
-            eprintln!("Failed to send request: {}", e);
-            return Err(e.to_string());
-        }
-    };
+    let retry_strategy = ExponentialBackoff::from_millis(10).take(3);
+    let response = Retry::spawn(retry_strategy, || async {
+        client.execute(request.try_clone().unwrap()).await
+    }).await.unwrap();
 
     let convert_reqwest_to_http = convert_reqwest_to_http(response).await;
     Ok(convert_reqwest_to_http)
