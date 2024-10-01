@@ -7,7 +7,7 @@ use uuid::Uuid;
 use hmac::{ Hmac, Mac };
 use jwt::SignWithKey;
 
-use crate::{ get_query_string, send, Exchange, OrderBook, OrderBookUnit };
+use crate::{ get_query_string, send, CoinList, Exchange, OrderBook, OrderBookUnit, Price };
 
 pub struct Bithumb {
     api_url: String,
@@ -86,6 +86,7 @@ impl BithumbTrait for Bithumb {
             ("cancel_order".to_string(), ["DELETE".to_string(), "v1/order".to_string()]),
             ("order_book".to_string(), ["GET".to_string(), "v1/orderbook".to_string()]),
             ("current_price".to_string(), ["GET".to_string(), "v1/ticker".to_string()]),
+            ("coin_list".to_string(), ["GET".to_string(), "v1/market/all".to_string()]),
         ]);
 
         Ok(Self {
@@ -181,7 +182,7 @@ impl Exchange for Bithumb {
         "Bithumb".to_string()
     }
 
-    async fn get_current_price(&self, req: Value) -> Result<Value, String> {
+    async fn get_current_price(&self, req: Value) -> Result<Price, String> {
         let symbol = parse_symbol(req["symbol"].as_str().unwrap());
         let params = BTreeMap::from([("markets", symbol.as_str())]);
 
@@ -200,8 +201,56 @@ impl Exchange for Bithumb {
 
         let response = send(request).await.map_err(|e| e.to_string())?;
         let body = response.into_body();
-        let res: Value = from_slice(&body).unwrap();
-        Ok(res)
+        let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Parsing response to create Price struct
+        let symbol_name = encode_symbol(res[0]["market"].as_str().unwrap_or_default());
+        let current_price = res[0]["trade_price"].to_string();
+
+        let price = Price {
+            exchange: "Bithumb".to_string(),
+            symbol: symbol_name,
+            price: current_price,
+        };
+
+        Ok(price)
+    }
+
+    async fn get_coin_list(&self) -> Result<CoinList, String> {
+        let params = BTreeMap::from([("isDetails", "false")]);
+
+        let query_string = get_query_string(params);
+        let base = self
+            .get_end_point_with_key("coin_list")
+            .ok_or("Endpoint not found".to_string())?;
+
+        let uri = format!("{}{}?{}", self.api_url, base[1], query_string);
+        let request = self.build_request(
+            base[0].as_str(),
+            &uri,
+            vec![(ACCEPT, "application/json")],
+            BTreeMap::new()
+        )?;
+
+        let response = send(request).await.map_err(|e| e.to_string())?;
+        let body = response.into_body();
+        let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        // Parsing response to create CoinList struct
+        let market = "Bithumb".to_string();
+        let coin_list = res
+            .as_array()
+            .ok_or("Response is not an array".to_string())?
+            .iter()
+            .filter_map(|coin| coin["market"].as_str().map(|s| encode_symbol(s)))
+            .collect::<Vec<String>>();
+
+        let coin_list_struct = CoinList {
+            market,
+            coin_list,
+        };
+
+        Ok(coin_list_struct)
     }
 }
 
