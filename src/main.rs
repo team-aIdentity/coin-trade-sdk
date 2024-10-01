@@ -83,9 +83,9 @@ async fn main() {
                 ).await
                 .unwrap();
         }
-        println!("{}_get_order_book:{:?}\n", exchange.get_name(), res);
+        println!("{}_get_order_book:{:?}", exchange.get_name(), res);
 
-        let res: Value;
+        let res;
         if exchange.get_name() == "Bithumb" {
             res = exchange
                 .get_current_price(json!({
@@ -100,6 +100,9 @@ async fn main() {
                 .unwrap();
         }
 
-        println!("{}_get_current_price:{:?}\n", exchange.get_name(), res);
+        println!("{}_get_current_price:{:?}", exchange.get_name(), res);
+
+        let res = exchange.get_coin_list().await.unwrap();
+        println!("{}_coin_list:{:?}\n", exchange.get_name(), res);
     }
 }
