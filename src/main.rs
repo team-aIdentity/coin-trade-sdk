@@ -95,7 +95,7 @@ async fn main() {
         } else {
             res = exchange
                 .get_current_price(json!({
-                "symbol": "BTC/USDT"
+                "symbol": "ZRX/USDC"
             })).await
                 .unwrap();
         }

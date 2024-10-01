@@ -211,9 +211,11 @@ impl Exchange for Binance {
         let body = response.into_body();
         let res: Value = from_slice(&body).map_err(|e| e.to_string())?;
 
+        println!(">>>>>>>>>>>>>>>>>>>>> {:?}", res);
+
         // Parsing response to create Price struct
         let symbol_name = req["symbol"].as_str().unwrap().to_string();
-        let current_price = res["price"].as_str().unwrap().to_string();
+        let current_price = res["price"].as_str().unwrap_or("0.0").to_string();
 
         let price = Price {
             exchange: "Binance".to_string(),
