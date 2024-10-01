@@ -204,7 +204,7 @@ impl Exchange for Bithumb {
         let res: Value = from_slice(&body).map_err(|e| format!("Failed to parse response: {}", e))?;
 
         // Parsing response to create Price struct
-        let symbol_name = encode_symbol(res[0]["market"].as_str().unwrap_or_default());
+        let symbol_name = req["symbol"].as_str().unwrap().to_string();
         let current_price = res[0]["trade_price"].to_string();
 
         let price = Price {
